@@ -30,29 +30,44 @@ class Notifications(View):
     # WS0802 filter notifications
     def get(self, request):
         notifications = Notification.objects.all()
-        if "from" in request.GET:
-            notifications = notifications.filter(actor_object_id=request.GET["from"])
-        if "to" in request.GET:
-            notifications = notifications.filter(recipient_id=request.GET["to"])
-        if "unread" in request.GET:
-            if request.GET["unread"] in ["True", "true", "1"]:
-                notifications = notifications.filter(unread=True)
-            elif request.GET["unread"] in ["False", "false", "0"]:
-                notifications = notifications.filter(unread=False)
+        from_person = request.GET["from"]
+        to_person = request.GET["to"]
+        unread = request.GET["unread"]
+        page = request.GET["page"]
+        pageSize = request.GET["pageSize"]
+        filters = {}
+        result = []
+        amount = 0
+        if not page:
+            page = 1
+        if not pageSize:
+            pageSize = 10
+        if from_person:
+            filters["actor_object_id"] = from_person
+        if to_person:
+            filters["recipient_id"] = to_person
+        if unread:
+            if unread in ["True", "true", "1"]:
+                filters["unread"] = True
+            elif unread in ["False", "false", "0"]:
+                filters["unread"] = False
             else:
                 raise BadRequestException("unread should be True or False")
+        notifications_result = Notification.objects.filter(**filters)
 
-        page_size = int(request.GET.get("pageSize", 10))
-        page = int(request.GET.get("page", 1))
-        pages = Paginator(notifications, page_size)
+        for notification in notifications_result:
+            result.append((notification_normal(notification)))
+            amount +=1
+        paginator = Paginator(notifications_result, pageSize)
+        current_page = paginator.get_page(page)
         return JsonResponse(
-            {
-                "notifications": [
-                    notification_normal(notification)
-                    for notification in pages.page(page)
-                ],
-                "total": notifications.count(),
-                "pages": pages.num_pages,
-            },
-            status=200,
-        )
+                {
+                    "notifications": result,
+                    "total": amount,
+                    "pages_count": amount,
+                    "page": current_page.number,
+                    "pageSize": pageSize
+                },
+                status=200,
+            )
+
